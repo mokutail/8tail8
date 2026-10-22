@@ -60,7 +60,8 @@ function homeView() {
       </div>
     </div>`;
   }).join('');
-  return `<div class="bar"><h1>KP進行ボード</h1><a class="btn ghost small" href="../">道具の一覧</a></div>
+  return `<a class="home-link" href="../">← 8tail8 tools</a>
+    <div class="bar"><h1>KP進行ボード</h1></div>
     ${DB.scenarios.length ? `<div class="list">${list}</div>` : `<div class="card"><p>シナリオ本文を貼りつけると、シーン・情報・秘匿の一覧を作ります。セッション中は、渡したものにチェックをつけていきます。</p></div>`}
     <div class="row" style="margin-top:14px">
       <button class="btn primary" data-act="new-scn">＋ シナリオを取りこむ</button>
