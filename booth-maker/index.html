@@ -220,6 +220,7 @@ pre#preview {
   let S = blank(latestData());
   let panelOpen = false;
   let confirmId = null;
+  let query = '';
 
   /* ---------- 完成文をつくる ---------- */
   const width = (s) => [...s].reduce((w, c) => w + (/[\x20-\x7e｡-ﾟ]/.test(c) ? 0.5 : 1), 0);
@@ -334,13 +335,20 @@ pre#preview {
     const p = document.getElementById('saved-panel');
     p.hidden = !panelOpen;
     if (!panelOpen) return;
-    const list = [...store.list].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    const q = query.trim().toLowerCase();
+    const all = [...store.list].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    const hit = (x) => [x.data.title, x.data.nick, x.data.stage, x.data.system].some((v) => String(v || '').toLowerCase().includes(q));
+    const list = q ? all.filter(hit) : all;
+    const keep = document.activeElement && document.activeElement.id === 'q';
     p.innerHTML = `<h2>保存したシナリオ<button type="button" class="mini" data-list aria-label="とじる">とじる</button></h2>
+      ${all.length ? `<input type="text" id="q" placeholder="タイトル・呼称・舞台でさがす" value="${esc(query)}" aria-label="保存したシナリオをさがす" style="margin:4px 0 6px">` : ''}
+      ${all.length && !list.length ? '<p class="note">見つかりませんでした。</p>' : ''}
       ${list.length ? list.map((x) => `<div class="saved-row">
         <span class="t">${esc(x.data.title || '(無題)')}<span class="d">${fmtDate(x.updated)}</span>${x.id === store.cur ? '<span class="cur">編集中</span>' : ''}</span>
         <button type="button" class="mini" data-open="${x.id}">開く</button>
         <button type="button" class="mini del ${confirmId === x.id ? 'sure' : ''}" data-remove="${x.id}">${confirmId === x.id ? '本当に消す' : '消す'}</button>
-      </div>`).join('') : '<p class="note">まだありません。入力すると自動で保存されます。</p>'}`;
+      </div>`).join('') : all.length ? '' : '<p class="note">まだありません。入力すると自動で保存されます。</p>'}`;
+    if (keep) { const el = document.getElementById('q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
   }
 
   function renderOut() {
@@ -369,6 +377,7 @@ pre#preview {
   /* ---------- 操作 ---------- */
   document.addEventListener('input', (e) => {
     const t = e.target;
+    if (t.id === 'q') { query = t.value; renderSaved(); return; }
     if (t.dataset.k) { S[t.dataset.k] = t.value; if (t.closest('.chips')) t.closest('.chips').querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c.dataset.v === t.value)); }
     else if (t.dataset.arr) { const row = S[t.dataset.arr][Number(t.dataset.i)]; row[Number(t.dataset.j || 0)] = t.value; }
     else return;

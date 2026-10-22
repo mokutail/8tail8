@@ -13,13 +13,25 @@ const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store)); } c
 const curItem = () => store.list.find((x) => x.id === store.cur) || null;
 const latest = () => [...store.list].sort((a, b) => (b.updated || 0) - (a.updated || 0))[0]?.data || null;
 
+const COLOR_KEY = 'jirai-sheet-colors';
+const TPL_KEY = 'jirai-sheet-template';
+const MAX_COLORS = 7;
+let myColors = [];
+try { const c = JSON.parse(localStorage.getItem(COLOR_KEY)); if (Array.isArray(c)) myColors = c.slice(0, MAX_COLORS); } catch (e) { /* なし */ }
+const saveColors = () => { try { localStorage.setItem(COLOR_KEY, JSON.stringify(myColors)); } catch (e) { /* なし */ } };
+let template = null; // 自分で決めた項目のひな形(なければ最初の項目)
+try { const t = JSON.parse(localStorage.getItem(TPL_KEY)); if (Array.isArray(t) && t.length) template = t; } catch (e) { /* なし */ }
+const baseCats = () => (template || DEFAULT_CATS.map((c) => ({ name: c.name, col: c.col, items: c.items })))
+  .map((c) => ({ name: c.name, col: c.col, items: c.items.map((t) => ({ t, on: false })) }));
+let query = '';
+
 function blank(keep) {
   return {
     title: '',
     color: (keep && keep.color) || PRESETS[0][0],
     heading: (keep && keep.heading) || 'TRPG 地雷・注意事項チェックシート',
     footer: keep && keep.footer != null ? keep.footer : 'チェックがついている要素が含まれます',
-    cats: DEFAULT_CATS.map((c) => ({ name: c.name, col: c.col, items: c.items.map((t) => ({ t, on: false })) })),
+    cats: baseCats(),
   };
 }
 
@@ -204,12 +216,18 @@ function renderBar() {
   const p = $('saved-panel');
   p.hidden = !panelOpen;
   if (!panelOpen) return;
-  const list = [...store.list].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const q = query.trim().toLowerCase();
+  const all = [...store.list].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const list = q ? all.filter((x) => (x.data.title || '').toLowerCase().includes(q)) : all;
+  const keep = document.activeElement && document.activeElement.id === 'q';
   p.innerHTML = `<h2>保存したシート<button type="button" class="mini" data-list>とじる</button></h2>
+    ${all.length ? `<input type="text" id="q" placeholder="シナリオ名でさがす" value="${esc(query)}" aria-label="保存したシートをさがす" style="margin:4px 0 6px">` : ''}
+    ${all.length && !list.length ? '<p class="note">見つかりませんでした。</p>' : ''}
     ${list.length ? list.map((x) => `<div class="saved-row"><span class="t">${esc(x.data.title || '(無題)')}<span class="d">${fmtDate(x.updated)}</span>${x.id === store.cur ? '<span class="cur">編集中</span>' : ''}</span>
       <button type="button" class="mini" data-open="${x.id}">開く</button>
       <button type="button" class="mini ${confirmId === x.id ? 'sure' : ''}" data-remove="${x.id}">${confirmId === x.id ? '本当に消す' : '消す'}</button></div>`).join('')
-    : '<p class="note">まだありません。チェックやシナリオ名を入れると自動で保存されます。</p>'}`;
+    : all.length ? '' : '<p class="note">まだありません。チェックやシナリオ名を入れると自動で保存されます。</p>'}`;
+  if (keep) { const el = $('q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
 }
 
 function boothTitles() {
@@ -225,6 +243,7 @@ function renderForm() {
     if (mode === 'check') {
       return `<section class="cat"><div class="cat-h"><span class="name" style="color:${esc(S.color)}">【${esc(c.name)}】</span><span class="n">${n ? `${n}つチェック` : ''}</span></div>
         ${c.items.map((it, ii) => `<button type="button" class="it ${it.on ? 'on' : ''}" data-tog="${ci}.${ii}" role="checkbox" aria-checked="${it.on}"><span class="box">${CHECK}</span><span class="txt">${esc(it.t)}</span></button>`).join('')}
+        <form class="quick" data-quick="${ci}"><input type="text" id="qa${ci}" placeholder="項目を追加(入れるとチェックつきで入ります)" aria-label="【${esc(c.name)}】に項目を追加"><button type="submit" class="mini">追加</button></form>
       </section>`;
     }
     return `<section class="cat"><div class="cat-h">
@@ -245,13 +264,24 @@ function renderForm() {
       <label class="f" style="margin-top:12px">色</label>
       <div class="swatches">${PRESETS.map(([hex, name]) => `<button type="button" class="sw ${S.color.toLowerCase() === hex ? 'on' : ''}" style="background:${hex}" data-color="${hex}" aria-label="${name}" title="${name}"></button>`).join('')}
         <label class="sw-custom">ほかの色<input type="color" id="f-color" value="${esc(S.color)}"></label></div>
+      <div class="mycolors">
+        <span class="count">マイカラー(${myColors.length}/${MAX_COLORS})</span>
+        ${myColors.map((hex) => `<span class="mc"><button type="button" class="sw ${S.color.toLowerCase() === hex ? 'on' : ''}" style="background:${hex}" data-color="${hex}" aria-label="マイカラー ${hex}" title="${hex}"></button><button type="button" class="mc-x" data-delcolor="${hex}" aria-label="${hex} を消す">×</button></span>`).join('')}
+        ${myColors.includes(S.color.toLowerCase()) || PRESETS.some(([h]) => h === S.color.toLowerCase()) ? '' : `<button type="button" class="mini" data-savecolor>＋ いまの色を保存</button>`}
+      </div>
     </div>
     <div class="modebar">
       <span class="seg" role="radiogroup" aria-label="モード"><button type="button" class="${mode === 'check' ? 'on' : ''}" data-mode="check" role="radio" aria-checked="${mode === 'check'}">チェックする</button><button type="button" class="${mode === 'edit' ? 'on' : ''}" data-mode="edit" role="radio" aria-checked="${mode === 'edit'}">項目を編集</button></span>
       <span class="count">チェック <b>${on}</b>項目 ${on ? '<button type="button" class="mini" data-clear>全部はずす</button>' : ''}</span>
     </div>
     ${cats}
-    ${mode === 'edit' ? `<button type="button" class="add" data-addcat style="margin:0">＋ 分類を追加</button>
+    <button type="button" class="add" data-addcat style="margin:0">＋ 分類を追加</button>
+    <div class="card">
+      <b class="small">項目のひな形</b>
+      <p class="note" style="margin:4px 0 8px">足した項目や分類を、次から「新しく作る」シートにも入れたいときは、ひな形として保存します。${template ? '(いまは自分のひな形を使っています)' : ''}</p>
+      <div class="row"><button type="button" class="mini" data-save-tpl>いまの項目をひな形にする</button>${template ? '<button type="button" class="mini" data-reset-tpl>最初のひな形にもどす</button>' : ''}</div>
+    </div>
+    ${mode === 'edit' ? `
       <div class="card">
         <label class="f" for="f-heading">いちばん上の題名</label><input type="text" id="f-heading" data-k="heading" value="${esc(S.heading)}">
         <label class="f" for="f-footer" style="margin-top:10px">いちばん下の一文(空にすると出しません)</label><input type="text" id="f-footer" data-k="footer" value="${esc(S.footer)}">
@@ -302,7 +332,27 @@ document.addEventListener('click', (e) => {
   }
   if (b.hasAttribute('data-reset-items')) {
     if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'もう一度押すと、項目とチェックが最初の状態にもどります'; return; }
-    S.cats = blank(S).cats; commit({ form: true }); toast('項目を最初の状態にもどしました'); return;
+    S.cats = DEFAULT_CATS.map((c) => ({ name: c.name, col: c.col, items: c.items.map((t) => ({ t, on: false })) })); commit({ form: true }); toast('項目を最初の状態にもどしました'); return;
+  }
+  if (b.hasAttribute('data-savecolor')) {
+    const hex = S.color.toLowerCase();
+    if (myColors.length >= MAX_COLORS) { toast(`マイカラーは${MAX_COLORS}つまでです。どれかを×で消してから保存してください`); return; }
+    myColors.push(hex); saveColors(); renderForm(); toast('マイカラーに保存しました');
+    return;
+  }
+  if (d.delcolor) { myColors = myColors.filter((h) => h !== d.delcolor); saveColors(); renderForm(); toast('マイカラーから消しました'); return; }
+  if (b.hasAttribute('data-save-tpl')) {
+    template = S.cats.map((c) => ({ name: c.name, col: c.col, items: c.items.map((i) => i.t).filter((t) => t.trim()) }));
+    try { localStorage.setItem(TPL_KEY, JSON.stringify(template)); } catch (e) { /* なし */ }
+    renderForm(); toast('ひな形にしました。次から新しく作るシートに入ります');
+    return;
+  }
+  if (b.hasAttribute('data-reset-tpl')) {
+    if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'もう一度押すと、最初のひな形にもどります'; return; }
+    template = null;
+    try { localStorage.removeItem(TPL_KEY); } catch (e) { /* なし */ }
+    renderForm(); toast('最初のひな形にもどしました(いま開いているシートはそのままです)');
+    return;
   }
   if (b.hasAttribute('data-list')) { panelOpen = !panelOpen; confirmId = null; renderBar(); return; }
   if (d.open) { store.cur = d.open; S = JSON.parse(JSON.stringify(curItem().data)); panelOpen = false; renderBar(); renderForm(); draw(); window.scrollTo(0, 0); return; }
@@ -317,8 +367,25 @@ document.addEventListener('click', (e) => {
   }
 });
 
+document.addEventListener('change', (e) => { if (e.target.id === 'f-color') renderForm(); });
+
+document.addEventListener('submit', (e) => {
+  const f = e.target.closest('[data-quick]');
+  if (!f) return;
+  e.preventDefault();
+  const ci = Number(f.dataset.quick);
+  const input = f.querySelector('input');
+  const t = input.value.trim();
+  if (!t) return;
+  S.cats[ci].items.push({ t, on: true });
+  commit({ form: true });
+  const el = $(`qa${ci}`); if (el) el.focus();
+  toast('項目を追加しました');
+});
+
 document.addEventListener('input', (e) => {
   const t = e.target;
+  if (t.id === 'q') { query = t.value; renderBar(); return; }
   if (t.dataset.k) { S[t.dataset.k] = t.value; commit(); return; }
   if (t.dataset.cn) { S.cats[Number(t.dataset.cn)].name = t.value; commit(); return; }
   if (t.dataset.it) { const [ci, ii] = t.dataset.it.split('.').map(Number); S.cats[ci].items[ii].t = t.value; commit(); return; }
