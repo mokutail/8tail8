@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>告知文メーカー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Antique&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=BIZ+UDPGothic&display=swap">
+<style>
+/* 左で選ぶ・入れる、右にXのポストの形で見せる */
+:root {
+  --bg: #f1f2ee; --panel: #ffffff; --ink: #23262c; --ink-2: #646872; --line: #d9dbd5;
+  --accent: #a3315e; --accent-ink: #ffffff; --accent-wash: #f6e4ea; --paper: #fbfbf8;
+  --ok: #2f7d5b; --warn: #b8741a; --over: #c0392b;
+  --display: "Zen Antique", "Hiragino Mincho ProN", serif;
+  --body: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --text: "BIZ UDPGothic", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #15171b; --panel: #1e2126; --ink: #e8e9ec; --ink-2: #a2a6af; --line: #343840; --accent: #e0709c; --accent-ink: #1a0f14; --accent-wash: #3a2330; --paper: #191b1f; --ok: #6cc79c; --warn: #e2a65a; --over: #ff7a6b; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55;
+  padding: 0 max(16px, env(safe-area-inset-right, 0px)) 80px max(16px, env(safe-area-inset-left, 0px)); }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 1180px; margin: 0 auto; }
+.home-link { display: inline-block; font-size: 13px; color: var(--ink-2); text-decoration: none; padding-top: 14px; }
+.home-link:hover { color: var(--accent); }
+header.top { padding-block: 22px 14px; }
+h1 { font-family: var(--display); font-weight: 400; font-size: 28px; margin: 0; letter-spacing: .04em; }
+h1 small { display: block; font-family: var(--body); font-size: 13px; color: var(--ink-2); letter-spacing: 0; margin-top: 2px; }
+
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); } .out { position: static !important; } }
+.form { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px 14px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.card h2 { font-family: var(--display); font-weight: 400; font-size: 17px; margin: 0; }
+.hint { font-size: 12.5px; color: var(--ink-2); margin: 0; }
+label.f { display: block; font-size: 13px; font-weight: 700; margin: 0 0 4px; }
+input[type="text"], input[type="url"], textarea { width: 100%; min-width: 0; border: 1.5px solid var(--line); background: var(--paper); border-radius: 9px; padding: 7px 10px; font-size: 15px; }
+textarea { min-height: 76px; resize: vertical; line-height: 1.6; font-family: var(--text); }
+input:focus, textarea:focus { border-color: var(--accent); outline: none; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.seg { display: inline-flex; padding: 3px; gap: 3px; background: var(--line); border-radius: 11px; }
+.seg button { border: 0; background: none; border-radius: 8px; padding: 7px 14px; font-weight: 700; font-size: 14px; }
+.seg button.on { background: var(--panel); }
+.chip { border: 1.5px solid var(--line); background: var(--paper); border-radius: 99px; padding: 3px 11px; font-size: 13px; }
+.chip:hover { border-color: var(--accent); }
+.chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+/* 入れる行のスイッチ */
+.lines { display: flex; flex-direction: column; }
+.ln { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 2px; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; font-size: 14px; }
+.ln:first-child { border-top: 0; }
+.ln .box { width: 20px; height: 20px; border-radius: 5px; border: 2px solid var(--ink-2); display: grid; place-items: center; color: #fff; font-size: 13px; }
+.ln.on .box { background: var(--accent); border-color: var(--accent); }
+.ln:not(.on) .t { color: var(--ink-2); text-decoration: line-through; }
+.ln .w { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.ln .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { display: inline-flex; align-items: center; gap: 4px; border: 1.5px solid var(--line); background: var(--paper); border-radius: 99px; padding: 2px 4px 2px 11px; font-size: 13px; }
+.tag.on { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.tag button { border: 0; background: none; padding: 0 4px; color: var(--ink-2); }
+
+/* Xのポストの形 */
+.out { position: sticky; top: 12px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.post { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
+.who { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.av { width: 40px; height: 40px; border-radius: 50%; background: var(--accent-wash); color: var(--accent); display: grid; place-items: center; font-weight: 700; }
+.who b { display: block; font-size: 14.5px; }
+.who span { font-size: 13px; color: var(--ink-2); }
+.body { white-space: pre-wrap; word-break: break-all; font-family: var(--text); font-size: 15px; line-height: 1.6; }
+.body .u { color: #1d9bf0; }
+.body .h { color: #1d9bf0; }
+.meter { display: flex; align-items: center; gap: 10px; }
+.ring { width: 34px; height: 34px; }
+.cnt { font-variant-numeric: tabular-nums; font-weight: 700; }
+.cnt.ok { color: var(--ok); } .cnt.warn { color: var(--warn); } .cnt.over { color: var(--over); }
+.msg { font-size: 13px; color: var(--ink-2); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { border: 0; border-radius: 10px; padding: 9px 18px; font-weight: 700; font-size: 14.5px; background: var(--accent); color: var(--accent-ink); text-decoration: none; display: inline-block; }
+.btn.ghost { background: var(--panel); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+.btn[aria-disabled="true"] { opacity: .45; pointer-events: none; }
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 18px; border-radius: 10px; font-size: 14px; font-weight: 700; z-index: 20; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="home-link" href="../">← 8tail8 tools</a>
+  <header class="top"><h1>告知文メーカー<small>シナリオの公開・更新のお知らせを、Xの文字数(日本語140字)に収めて作ります</small></h1></header>
+  <div class="cols">
+    <div class="form" id="form"></div>
+    <aside class="out" aria-label="できあがり">
+      <div class="post">
+        <div class="who"><span class="av" aria-hidden="true">て</span><div><b id="who-name">てーる</b><span id="who-id">@8tail8</span></div></div>
+        <div class="body" id="body"></div>
+      </div>
+      <div class="meter"><svg class="ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--line)" stroke-width="3.5"/><circle id="ring" cx="18" cy="18" r="15" fill="none" stroke="var(--ok)" stroke-width="3.5" stroke-linecap="round" transform="rotate(-90 18 18)" stroke-dasharray="94.2" stroke-dashoffset="94.2"/></svg>
+        <span class="cnt" id="cnt"></span><span class="msg" id="msg"></span></div>
+      <div class="actions"><button type="button" class="btn" id="copy">コピー</button><a class="btn ghost" id="post" target="_blank" rel="noopener">Xで投稿する</a></div>
+      <p class="hint">文字数はXと同じ数え方です(日本語・全角は1字=2、英数字は1、URLはどんな長さでも23)。左の「入れる行」のチェックを外すと短くできます。</p>
+    </aside>
+  </div>
+</div>
+<script>
+(() => {
+  const KEY = 'post-maker-v1';
+  const LIMIT = 280; // Xの重みつきの上限(日本語なら140字)
+  const DEFAULT_TAGS = ['#CoC', '#クトゥルフ神話TRPG', '#TRPGシナリオ', '#CoCシナリオ', '#BOOTH'];
+
+  /* ---------- 保存(ハッシュタグ・名前など、毎回同じもの) ---------- */
+  let pref = { tags: DEFAULT_TAGS.map((t) => ({ t, on: false })), urls: {} };
+  try { const p = JSON.parse(localStorage.getItem(KEY)); if (p) pref = { ...pref, ...p }; } catch (e) { /* なし */ }
+  const savePref = () => { try { localStorage.setItem(KEY, JSON.stringify(pref)); } catch (e) { /* なし */ } };
+
+  /* ---------- いま作っている告知 ---------- */
+  const S = {
+    kind: 'release', // release | update
+    num: '', title: '', system: '', players: '', time: '', format: '', lost: '', skills: '', hoText: '', price: '',
+    url: '', hoUrl: '', comment: '', version: '', changes: '',
+    // いつもの告知の形(○作目/タイトル/Booth/HO診断)に、細かい情報は必要なときだけ足す
+    off: { head: true, players: true, time: true, format: true, skills: true, ho: true, price: true },
+  };
+  // CoC6版 → CoC6th(いつもの書き方)
+  const sysShort = (s) => s.trim().replace(/^CoC\s*([67])\s*版$/i, 'CoC$1th').replace(/^クトゥルフ神話TRPG\s*([67])\s*版?$/, 'CoC$1th');
+
+  function boothList() {
+    try { const s = JSON.parse(localStorage.getItem('booth-maker-v1')); return (s && s.list ? s.list : []).map((x) => x.data).filter((d) => d && d.title); } catch (e) { return []; }
+  }
+
+  /* ---------- 文字数(Xの数え方) ---------- */
+  const URL_RE = /https?:\/\/[^\s　]+/g;
+  function weight(text) {
+    let w = 0;
+    const noUrl = text.replace(URL_RE, (m) => { w += 23; return ''; });
+    for (const ch of noUrl) {
+      const c = ch.codePointAt(0);
+      const light = (c <= 0x10ff) || (c >= 0x2000 && c <= 0x200d) || (c >= 0x2010 && c <= 0x201f) || (c >= 0x2032 && c <= 0x2037);
+      w += light ? 1 : 2;
+    }
+    return w;
+  }
+
+  /* ---------- 文をつくる ---------- */
+  function lines() {
+    const L = [];
+    const add = (key, text) => { if (text === ' ' || (text && text.trim())) L.push({ key, text }); };
+    const name = S.title.trim() ? `『${S.title.trim()}』` : '『(タイトル)』';
+    const sys = sysShort(S.system);
+    if (S.kind === 'release') {
+      add('head', '【新作シナリオ公開】');
+      add('num', S.num.trim() && `${S.num.trim().replace(/作目$/, '')}作目`);
+      add('title', `${sys}${name}`);
+      add('blank1', ' ');
+      add('players', S.players.trim() && `▼人数:${S.players.trim()}`);
+      add('time', S.time.trim() && `▼時間:${S.time.trim()}`);
+      add('format', [S.format.trim(), S.lost.trim() && `ロスト率:${S.lost.trim()}`].filter(Boolean).join(' / ') && `▼${[S.format.trim() && `形式:${S.format.trim()}`, S.lost.trim() && `ロスト率:${S.lost.trim()}`].filter(Boolean).join(' / ')}`);
+      add('skills', S.skills.trim() && `▼推奨技能:${S.skills.trim()}`);
+      add('ho', S.hoText.trim() && `▼HO:${S.hoText.trim()}`);
+      add('price', S.price.trim() && `▼価格:${S.price.trim()}`);
+      add('blank2', ' ');
+      add('comment', S.comment.trim());
+      add('blank3', ' ');
+      add('url', S.url.trim() && `Booth\n${S.url.trim()}`);
+      add('blank4', ' '); add('blank5', ' ');
+      add('hourl', S.hoUrl.trim() && `HO診断\n${S.hoUrl.trim()}`);
+    } else {
+      add('head', '【シナリオ更新のお知らせ】');
+      add('title', `${sys}${name}${S.version.trim() ? `を${S.version.trim()}に` : 'を'}更新しました。`);
+      add('blank1', ' ');
+      const ch = S.changes.split('\n').map((x) => x.trim()).filter(Boolean);
+      if (ch.length) { add('chhead', '▼更新内容'); ch.forEach((c, i) => add(`ch${i}`, `・${c.replace(/^[・･\-]\s*/, '')}`)); }
+      add('blank2', ' ');
+      add('dl', '購入済みの方は、BOOTHのライブラリから再ダウンロードできます。');
+      add('comment', S.comment.trim());
+      add('blank3', ' ');
+      add('url', S.url.trim() && `Booth\n${S.url.trim()}`);
+    }
+    const tags = pref.tags.filter((t) => t.on).map((t) => t.t).join(' ');
+    add('tags', tags);
+    return L;
+  }
+  function compose() {
+    const L = lines().filter((l) => !S.off[l.key]);
+    // 空行は2つまで(いつもの Booth と HO診断 の間)。行を外したときに空きすぎないように
+    const out = [];
+    for (const l of L) {
+      if (l.text === ' ') { if (out.length && !(out[out.length - 1] === '' && out[out.length - 2] === '')) out.push(''); continue; }
+      out.push(l.text);
+    }
+    // 空行のすぐ後に空行しか来ないところ(行を外したところ)は1つにする
+    for (let i = out.length - 1; i > 0; i--) if (out[i] === '' && out[i - 1] === '' && !(out[i + 1] || '').startsWith('HO診断')) out.splice(i, 1);
+    while (out.length && out[out.length - 1] === '') out.pop();
+    while (out.length && out[0] === '') out.shift();
+    return out.join('\n');
+  }
+
+  /* ---------- 画面 ---------- */
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const $ = (id) => document.getElementById(id);
+  const field = (k, label, ph = '', type = 'text') => `<div><label class="f" for="f-${k}">${label}</label><input type="${type}" id="f-${k}" data-k="${k}" value="${esc(S[k])}" placeholder="${esc(ph)}"></div>`;
+  const LABEL = { head: '見出し', num: '何作目', hourl: 'HO診断', title: 'タイトル', players: '人数', time: '時間', format: '形式・ロスト率', skills: '推奨技能', ho: 'HO', price: '価格', comment: 'ひとこと', url: 'URL', tags: 'ハッシュタグ', chhead: '「▼更新内容」', dl: '再ダウンロードの案内' };
+
+  function renderForm() {
+    const books = boothList();
+    const L = lines().filter((l) => l.text !== ' ');
+    $('form').innerHTML = `
+      <div class="card">
+        <span class="seg" role="radiogroup" aria-label="告知の種類">
+          <button type="button" class="${S.kind === 'release' ? 'on' : ''}" data-kind="release" role="radio" aria-checked="${S.kind === 'release'}">シナリオ公開</button>
+          <button type="button" class="${S.kind === 'update' ? 'on' : ''}" data-kind="update" role="radio" aria-checked="${S.kind === 'update'}">更新のお知らせ</button>
+        </span>
+        ${books.length ? `<div><label class="f">BOOTH説明文メーカーのシナリオから入れる</label><div class="row">${books.map((b, i) => `<button type="button" class="chip" data-book="${i}">${esc(b.title)}</button>`).join('')}</div></div>` : '<p class="hint">BOOTH説明文メーカーでシナリオを作っておくと、ここから呼び出せます。</p>'}
+      </div>
+      <div class="card">
+        <h2>シナリオ</h2>
+        <div class="two">${field('title', 'タイトル', '魔術師は泣けない')}${field('system', 'システム', 'CoC6th')}</div>
+        ${S.kind === 'release' ? `
+          <div class="two">${field('num', '何作目', '7')}<div></div></div>
+          ${field('hoUrl', 'HO診断のURL', 'https://kuizy.net/analysis/…', 'url')}
+          <p class="hint">人数・時間などの行は「入れる行」でチェックを入れると足せます。</p>
+          <div class="two">${field('players', '人数', '4人(秘匿HOあり)')}${field('time', '時間', '3～5時間')}</div>
+          <div class="two">${field('format', '形式', 'シティ')}${field('lost', 'ロスト率', '中')}</div>
+          ${field('skills', '推奨技能', '隠れる、目星')}
+          ${field('ho', 'HO', '万屋/経営者/薬草売り/勇者')}
+          ${field('price', '価格', '無料 / 500円 など')}` : `
+          ${field('version', '新しいバージョン', 'ver1.40')}
+          <div><label class="f" for="f-changes">更新内容(1行に1つ)</label><textarea id="f-changes" data-k="changes" placeholder="txtファイルの追加&#10;ドキュメントリンクの追加">${esc(S.changes)}</textarea></div>`}
+        ${field('url', 'BOOTHの商品ページのURL', 'https://8tail8.booth.pm/items/…', 'url')}
+        <div><label class="f" for="f-comment">ひとこと(なくてもOK)</label><textarea id="f-comment" data-k="comment" style="min-height:56px" placeholder="雪国を舞台にした秘匿HOシナリオです。">${esc(S.comment)}</textarea></div>
+      </div>
+      <div class="card">
+        <h2>ハッシュタグ</h2>
+        <div class="tags">${pref.tags.map((t, i) => `<span class="tag ${t.on ? 'on' : ''}"><button type="button" data-tag="${i}" aria-pressed="${t.on}" style="padding:0;color:inherit;font-weight:inherit">${esc(t.t)}</button><button type="button" data-deltag="${i}" aria-label="${esc(t.t)}を一覧から消す">×</button></span>`).join('')}</div>
+        <form class="row" id="tagform"><input type="text" id="newtag" placeholder="#ハッシュタグを追加" style="flex:1;min-width:10em"><button type="submit" class="chip">追加</button></form>
+        <p class="hint">押すと、入れる・入れないが切りかわります。ハッシュタグは次回も残ります。</p>
+      </div>
+      <div class="card">
+        <h2>入れる行</h2>
+        <p class="hint">チェックを外した行は、告知文に入りません。右の数字は、その行の文字数(Xの数え方)です。</p>
+        <div class="lines">${L.map((l) => `<button type="button" class="ln ${S.off[l.key] ? '' : 'on'}" data-line="${l.key}" aria-pressed="${!S.off[l.key]}"><span class="box">${S.off[l.key] ? '' : '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2 5 9 10 3" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'}</span><span class="t">${esc(l.text.replace(/\n/g, ' '))}</span><span class="w">${weight(l.text)}</span></button>`).join('')}</div>
+      </div>`;
+  }
+
+  function renderOut() {
+    const text = compose();
+    const w = weight(text);
+    const html = esc(text).replace(/https?:\/\/[^\s　<]+/g, (m) => `<span class="u">${m}</span>`).replace(/(^|[\s　])(#[^\s　#]+)/g, '$1<span class="h">$2</span>');
+    $('body').innerHTML = html || '<span style="color:var(--ink-2)">左に入力すると、ここに告知文ができます。</span>';
+    const left = LIMIT - w;
+    const cls = left < 0 ? 'over' : left < 20 ? 'warn' : 'ok';
+    $('cnt').className = `cnt ${cls}`;
+    $('cnt').textContent = `${Math.ceil(w / 2)} / 140字`;
+    $('msg').textContent = left < 0 ? `${Math.ceil(-left / 2)}字ほど多いです。「入れる行」を減らすか、文を短くしてください` : `あと${Math.floor(left / 2)}字入ります`;
+    const ring = $('ring');
+    ring.setAttribute('stroke-dashoffset', String(94.2 * (1 - Math.min(1, w / LIMIT))));
+    ring.setAttribute('stroke', left < 0 ? 'var(--over)' : left < 20 ? 'var(--warn)' : 'var(--ok)');
+    const a = $('post');
+    a.href = `https://x.com/intent/post?text=${encodeURIComponent(text)}`;
+    a.setAttribute('aria-disabled', String(left < 0 || !text));
+    $('copy').disabled = !text;
+  }
+  const all = () => { renderForm(); renderOut(); };
+
+  let toastT;
+  function toast(msg) {
+    let el = document.querySelector('.toast');
+    if (!el) { el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+    el.textContent = msg; el.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 2400);
+  }
+
+  /* ---------- BOOTH説明文メーカーから ---------- */
+  function fromBooth(d) {
+    S.title = d.title || '';
+    S.system = d.system || '';
+    S.players = d.players ? `${d.players}${d.secret ? '(秘匿HOあり)' : ''}` : '';
+    S.time = d.time || '';
+    S.format = d.format || '';
+    S.lost = d.lost || '';
+    S.skills = (d.skills || '').replace(/[、,]\s*など$/, '');
+    S.hoText = (d.hos || []).map((h) => h[0]).filter(Boolean).join('/');
+    S.hoUrl = d.hoUrl || '';
+    S.url = (pref.urls || {})[S.title] || '';
+    const all = boothList();
+    const idx = all.findIndex((x) => x.title === d.title);
+    if (!S.num && idx >= 0) S.num = String(idx + 1);
+    const vs = (d.versions || []).filter((v) => (v[0] || v[1]));
+    const last = vs[vs.length - 1];
+    if (last) {
+      const m = String(last[1]).match(/ver\s*[0-9.]+/i);
+      S.version = m ? m[0].replace(/\s+/, '') : '';
+      S.changes = String(last[1]).replace(/[(（]?\s*ver\s*[0-9.]+\s*[)）]?/i, '').split(/[、,]/).map((x) => x.trim()).filter(Boolean).join('\n');
+    }
+  }
+
+  /* ---------- 操作 ---------- */
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('button, a');
+    if (!b) return;
+    const d = b.dataset;
+    if (d.kind) { S.kind = d.kind; all(); return; }
+    if (d.book) { fromBooth(boothList()[Number(d.book)]); all(); toast('シナリオの情報を入れました'); return; }
+    if (d.tag) { const t = pref.tags[Number(d.tag)]; t.on = !t.on; savePref(); all(); return; }
+    if (d.deltag) { pref.tags.splice(Number(d.deltag), 1); savePref(); all(); return; }
+    if (d.line) { S.off[d.line] = !S.off[d.line]; all(); return; }
+    if (b.id === 'copy') {
+      const text = compose();
+      navigator.clipboard.writeText(text).then(() => toast('コピーしました'), () => toast('コピーできませんでした'));
+      return;
+    }
+  });
+  document.addEventListener('submit', (e) => {
+    if (e.target.id !== 'tagform') return;
+    e.preventDefault();
+    let t = $('newtag').value.trim().replace(/\s+/g, '');
+    if (!t) return;
+    if (!t.startsWith('#') && !t.startsWith('＃')) t = '#' + t;
+    if (!pref.tags.some((x) => x.t === t)) pref.tags.push({ t, on: true });
+    savePref(); all(); $('newtag').focus();
+  });
+  document.addEventListener('input', (e) => {
+    const k = e.target.dataset.k;
+    if (!k) return;
+    S[k === 'ho' ? 'hoText' : k] = e.target.value;
+    if (k === 'title' && !S.url.trim() && (pref.urls || {})[S.title.trim()]) S.url = pref.urls[S.title.trim()];
+    // BOOTHのURLはタイトルごとに覚えておく(更新のお知らせで使う)
+    if ((k === 'url' || k === 'title') && S.title.trim() && S.url.trim()) { pref.urls = pref.urls || {}; pref.urls[S.title.trim()] = S.url.trim(); savePref(); }
+    renderOut();
+    // 行の一覧の文字数だけ更新(入力中の欄はそのまま)
+    clearTimeout(document.t);
+    document.t = setTimeout(() => {
+      const keep = document.activeElement && document.activeElement.id;
+      const pos = document.activeElement && document.activeElement.selectionStart;
+      renderForm();
+      if (keep) { const el = $(keep); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (err) { /* なし */ } } }
+    }, 500);
+  });
+
+  // HO の欄は data-k="ho" で S.hoText に入れる
+  Object.defineProperty(S, 'ho', { get() { return S.hoText; }, set(v) { S.hoText = v; } });
+  all();
+})();
+</script>
+</body>
+</html>
