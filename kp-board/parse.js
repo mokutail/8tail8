@@ -25,14 +25,37 @@ export function plain(s) {
     .trim();
 }
 
+// 技能・ダイスの名前(【 】の中にあれば、シーンではなくダイス)
+const SKILLS = ['目星', '聞き耳', '図書館', 'アイデア', '知識', '幸運', '歴史', 'オカルト', '心理学', '医学', '薬学', '化学', '生物学',
+  '博物学', '地質学', '天文学', '物理学', '人類学', '考古学', '法律', '経理', '応急手当', '精神分析', '説得', '言いくるめ', '信用', '値切り',
+  '鍵開け', '機械修理', '電気修理', 'コンピューター', 'コンピュータ', '写真術', '追跡', '隠れる', '忍び歩き', '回避', '跳躍', '登攀', '水泳',
+  '運転', '操縦', '乗馬', '変装', 'ナビゲート', '芸術', '製作', '母国語', '英語', 'クトゥルフ神話', '投擲', 'こぶし', 'キック', '組み付き',
+  '頭突き', '拳銃', 'ライフル', 'ショットガン', 'マシンガン', 'サブマシンガン', '交渉', '魅惑', '威圧', '鑑定', 'サバイバル', '自然'];
+const DICE = new RegExp(`${SKILLS.join('|')}|STR|CON|POW|DEX|APP|SIZ|INT|EDU|SAN|×\\s*[0-9]|[xX]\\s*[0-9]|対抗|ロール|技能|判定|ダイス|[0-9]+\\s*[dD]\\s*[0-9]+`);
+/**
+ * 【 】の行が、ダイス・秘匿か(=シーンではない)。
+ * exact:true のときは【目星】【HO2秘匿情報】のように中身がそれだけのときに限る(見出しに使う)
+ */
+export function isDiceOrSecret(t, exact = false) {
+  const m = t.match(/^(強制\s*)?【([^】]{1,24})】/);
+  if (!m) return false;
+  const inner = m[2].trim();
+  if (/HO[^】]*秘匿|^秘匿情報/.test(inner)) return true;
+  if (inner === '戦闘' || /^SAN/.test(inner)) return true;
+  const parts = inner.split(/[\/／・、]/).map((x) => x.replace(/[+＋\-－]?\s*[0-9]+%?$/, '').trim());
+  if (parts.every((x) => SKILLS.includes(x) || /^(STR|CON|POW|DEX|APP|SIZ|INT|EDU)\s*(×|x|X)?\s*[0-9]*$/.test(x) || /対抗$/.test(x))) return true;
+  return !exact && !!m[1] && DICE.test(inner); // 「強制【…】」はダイス
+}
+
 const FRONT = /目次|概要|あらすじ|世界観|共通HO|公開HO|KP用情報|KP・PL共通|シナリオ情報|システムについて|表色|^タブ/;
 const BACK = /生還報酬|クリア報酬|解説|あとがき|注意事項/;
 const ENDING = /エンディング|END分岐/;
 const END_NAME = /^[〇○◯・]?\s*(END|ＥＮＤ)\s*[-‐ー－]?\s*[A-Za-z0-9α-ωΑ-Ω]/i;
 
-/** 囲みの中身から、情報・秘匿かどうかを判定 */
-function boxItem(text) {
+/** 囲みの中身から、情報・秘匿かどうかを判定(strict:行の頭が【 か 強制【 か 〈 のときだけ) */
+function boxItem(text, strict = false) {
   const t = plain(text);
+  if (strict && !/^(強制\s*)?[【〈]/.test(t)) return null;
   if (!t) return null;
   if (/探索可能|←\s*現在|現在地/.test(t)) return null; // 行き先の案内は情報ではない
   const sec = t.match(/【\s*((?:HO\s*[0-9０-９]\s*[&＆・、,と]?\s*)+)\s*秘匿/i) || t.match(/【([^】]*HO[^】]*)秘匿[^】]*】/i);
@@ -86,6 +109,7 @@ function parseMarkdown(text) {
       if (level <= 2 && FRONT.test(title)) { section = 'skip'; continue; }
       if ((section === 'ending' || section === 'back') && level >= 3) continue;
       if (level >= 4) continue; // 小さい見出し(分岐・条件)は、今のシーンの中にふくめる
+      if (isDiceOrSecret(title, true)) { const it = boxItem(title); if (it) push(it); continue; }
       section = 'play';
       sawPlay = true;
       lastLevel = level;
@@ -135,24 +159,32 @@ function dropEmptySubScenes(items) {
 
 /** 見出しのない文字(PDFなど)を読む */
 function parsePlain(text) {
+  const all = String(text).split(/\r?\n/).map(plain).filter(Boolean);
   const items = [];
   const ends = [];
   const seen = new Set();
   let started = false;
   let stop = false;
   let ending = false;
-  for (const raw of String(text).split(/\r?\n/)) {
+  for (let li = 0; li < all.length; li++) {
     if (stop) break;
-    const t = plain(raw);
-    if (!t) continue;
+    let t = all[li];
     if (/[\s.…・]\d{1,3}$/.test(t) && t.length < 40 && !started) continue; // 目次
-    if (END_NAME.test(t) && t.length <= 40) {
+    if (END_NAME.test(t) && t.length <= 40 && !/場合|から|移動/.test(t)) {
       const name = t.replace(/^[〇○◯・]\s*/, '');
       if (!ends.includes(name)) ends.push(name);
       ending = true;
       continue;
     }
-    const isHead = t.length <= 28 && (/^【[^】]{1,24}】$/.test(t) || /^ー.{1,20}ー$/.test(t) || /^HO\s*[0-9０-９].{0,6}導入$/.test(t) || /^■.{1,24}$/.test(t));
+    // 「【目星】」「【HO2秘匿情報】」だけの行 → ダイス・秘匿(次の行の中身をつなげる)
+    if (isDiceOrSecret(t) && t.replace(/^(強制\s*)?【[^】]*】/, '').trim().length < 4) {
+      const secretHead = /秘匿/.test(t);
+      let k = li + 1;
+      while (k < all.length && /^(成功時|失敗時|※.{0,30})$/.test(all[k])) k++;
+      const nx = all[k];
+      if (nx && nx.length > 1 && !/秘匿/.test(nx) && (secretHead || !isDiceOrSecret(nx))) { t = `${t} ${nx}`; li = k; }
+    }
+    const isHead = !isDiceOrSecret(t) && t.length <= 28 && (/^(導入|プロローグ|オープニング)$/.test(t) || /^【[^】]{1,24}】$/.test(t) || /^ー.{1,20}ー$/.test(t) || /^HO\s*[0-9０-９].{0,6}導入$/.test(t) || /^■.{1,24}$/.test(t));
     if (isHead) {
       if (BACK.test(t) && started) { stop = true; continue; }
       if (ENDING.test(t)) { ending = true; continue; }
@@ -163,7 +195,7 @@ function parsePlain(text) {
       continue;
     }
     if (!started || ending) continue;
-    const it = boxItem(t);
+    const it = boxItem(t, true);
     if (!it) continue;
     const key = `${it.type}:${it.text}`;
     if (seen.has(key)) continue;
