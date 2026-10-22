@@ -75,6 +75,10 @@ function homeView() {
         <button class="btn primary" data-act="new-table" data-id="${s.id}">＋ 新しい卓</button>
         ${ts.length >= 1 ? `<button class="btn" data-act="compare" data-id="${s.id}">卓をくらべる</button>` : ''}
         <button class="btn ghost" data-act="edit-scn" data-id="${s.id}">シナリオを編集</button>
+        <span style="flex:1"></span>
+        ${V.confirmHome === s.id
+    ? `<span class="confirm"><span class="small">${ts.length ? `卓の記録(${ts.length}卓)も消えます` : '消しますか?'}</span><button class="btn primary" data-act="del-scn-home" data-id="${s.id}">消す</button><button class="btn ghost" data-act="del-home-cancel">やめる</button></span>`
+    : `<button class="btn ghost danger" data-act="del-home-ask" data-id="${s.id}">消す</button>`}
       </div>
     </div>`;
   }).join('');
@@ -145,7 +149,7 @@ function importView() {
     <div class="row" style="margin-top:18px">
       <button class="btn primary" data-act="save-scn" ${d.title.trim() && d.items.length ? '' : 'disabled'}>保存する</button>
       <button class="btn ghost" data-act="home">やめる</button>
-      ${d.id ? `<span style="flex:1"></span>${V.confirmDel ? `<span class="confirm"><span class="small">卓の記録も消えます</span><button class="btn danger" data-act="del-scn">消す</button><button class="btn ghost" data-act="del-cancel">やめる</button></span>` : '<button class="btn danger ghost" data-act="del-ask">このシナリオを消す</button>'}` : ''}
+      ${d.id ? `<span style="flex:1"></span>${V.confirmDel ? `<span class="confirm"><span class="small">卓の記録も消えます</span><button class="btn primary" data-act="del-scn">消す</button><button class="btn ghost" data-act="del-cancel">やめる</button></span>` : '<button class="btn danger ghost" data-act="del-ask">このシナリオを消す</button>'}` : ''}
     </div>`;
 }
 
@@ -221,7 +225,7 @@ function boardView() {
           <label class="f">PCごとの結果</label>
           <div class="res">${pls.map((p, i) => `<b class="small">${esc(seat(s, i, false))}</b><span class="small">${esc(p.pc || p.pl || '')}</span><span class="seg">${RESULTS.map((r) => `<button class="${(t.results[i] || '') === r ? 'on' : ''} ${r === 'ロスト' ? 'lost' : ''}" data-act="result" data-i="${i}" data-v="${r}" aria-pressed="${(t.results[i] || '') === r}">${r}</button>`).join('')}</span>`).join('')}</div>
         </div>
-        <div class="row">${V.confirmDel ? `<span class="confirm"><span class="small">この卓の記録を消しますか?</span><button class="btn danger" data-act="del-table">消す</button><button class="btn ghost" data-act="del-cancel">やめる</button></span>` : '<button class="btn ghost danger" data-act="del-ask">この卓を消す</button>'}</div>
+        <div class="row">${V.confirmDel ? `<span class="confirm"><span class="small">この卓の記録を消しますか?</span><button class="btn primary" data-act="del-table">消す</button><button class="btn ghost" data-act="del-cancel">やめる</button></span>` : '<button class="btn ghost danger" data-act="del-ask">この卓を消す</button>'}</div>
       </div>
     </div>
     <div class="memo-bar">
@@ -359,6 +363,16 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'del-ask': V.confirmDel = true; render(); break;
+    case 'del-home-ask': V.confirmHome = b.dataset.id; render(); break;
+    case 'del-home-cancel': V.confirmHome = null; render(); break;
+    case 'del-scn-home': {
+      const id = b.dataset.id;
+      DB.scenarios = DB.scenarios.filter((x) => x.id !== id);
+      DB.tables = DB.tables.filter((x) => x.scenarioId !== id);
+      V.confirmHome = null;
+      save(); render(); toast('消しました');
+      break;
+    }
     case 'del-cancel': V.confirmDel = false; render(); break;
     case 'del-scn': { const id = V.draft.id; DB.scenarios = DB.scenarios.filter((x) => x.id !== id); DB.tables = DB.tables.filter((x) => x.scenarioId !== id); save(); toast('消しました'); go('home'); break; }
     case 'new-table': {
