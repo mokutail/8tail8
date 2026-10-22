@@ -173,10 +173,48 @@ function parsePlain(text) {
   return { items, ends };
 }
 
+/**
+ * 人数・HOを読む。
+ * 「人数:4人固定」「推奨人数:1~4人」「2人以上(PL1人+KPCのタイマン可)」「HO1:「万屋」…」など
+ */
+export function readMeta(text) {
+  const lines = String(text || '').split(/\r?\n/).map((l) => toHalf(plain(l)));
+  let min = null; let max = null;
+  for (const l of lines) {
+    if (!/人[\s]*数/.test(l) || /探索者の人数|人数分/.test(l)) continue;
+    const r = l.match(/([0-9]+)\s*人?\s*[~〜～\-ー－]\s*([0-9]+)\s*人/);
+    if (r) { min = Number(r[1]); max = Number(r[2]); break; }
+    const more = l.match(/([0-9]+)\s*人\s*以上/);
+    if (more) {
+      min = Number(more[1]); max = null;
+      const solo = l.match(/PL\s*([0-9]+)\s*人/);
+      if (solo) min = Math.min(min, Number(solo[1]));
+      break;
+    }
+    const one = l.match(/([0-9]+)\s*人/);
+    if (one) { min = max = Number(one[1]); break; }
+  }
+  const names = [];
+  let hoCount = 0;
+  for (const l of lines) {
+    const m = l.match(/^\|?\s*HO\s*([0-9])\s*[:：]\s*(「([^」]{1,16})」)?/i);
+    if (!m) continue;
+    const n = Number(m[1]);
+    hoCount = Math.max(hoCount, n);
+    if (m[3] && !names[n - 1]) names[n - 1] = m[3];
+  }
+  if (hoCount && max == null) max = Math.max(hoCount, min || 0);
+  if (hoCount && min == null) min = hoCount;
+  if (min == null && max == null) { min = 1; max = 4; }
+  if (max == null) max = Math.max(min, 6);
+  return { minPL: min, maxPL: Math.min(max, 9), hoCount: Math.min(hoCount, 9), hoNames: Array.from({ length: Math.min(hoCount, 9) }, (_, i) => names[i] || '') };
+}
+
 /** 本文全体から、候補とENDを作る */
 export function parseScenario(text) {
   const isMd = /^#{2,4}\s/m.test(text);
-  return isMd ? parseMarkdown(text) : parsePlain(text);
+  const r = isMd ? parseMarkdown(text) : parsePlain(text);
+  return { ...r, meta: readMeta(text) };
 }
 
 /** 平らな候補リストを、シーンごとのまとまりにする */
@@ -233,7 +271,8 @@ export function htmlToText(html) {
 
 /** PDFから文字を取り出す(pdf.js をその場で読みこむ。ファイルは外に送らない) */
 export async function pdfToText(file, onProgress = () => {}) {
-  const BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+  // PDFを読む部品は、このサイトの中に置いてある(外部サイトに頼らない)
+  const BASE = new URL('./vendor/pdfjs/', import.meta.url).href;
   if (!window.pdfjsLib) {
     await new Promise((res, rej) => {
       const s = document.createElement('script');

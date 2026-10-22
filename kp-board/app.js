@@ -18,10 +18,28 @@ const pad2 = (n) => String(n).padStart(2, '0');
 const hm = (iso) => { if (!iso) return ''; const d = new Date(iso); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
 const dur = (ms) => { if (ms == null || ms < 0) return '—'; const m = Math.round(ms / 60000); return `${Math.floor(m / 60)}時間${pad2(m % 60)}分`; };
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
-const scn = (id) => DB.scenarios.find((s) => s.id === id);
+const scn = (id) => norm(DB.scenarios.find((s) => s.id === id));
 const tbl = (id) => DB.tables.find((t) => t.id === id);
 const allItems = (s) => s.scenes.flatMap((sc) => sc.items.map((it) => ({ ...it, sceneId: sc.id, sceneTitle: sc.title })));
 const RESULTS = ['生還', 'ロスト', 'その他'];
+
+/* 人数とHO(古い保存データにも対応) */
+function norm(s) {
+  if (!s) return s;
+  if (s.minPL == null) { s.minPL = s.hoCount || 1; s.maxPL = s.hoCount || 4; }
+  if (!Array.isArray(s.hoNames)) s.hoNames = [];
+  return s;
+}
+const plRange = (s) => (s.minPL === s.maxPL ? `${s.maxPL}人` : `${s.minPL}〜${s.maxPL}人`);
+/** その卓のPLの人数 */
+const plCount = (t, s) => Math.max(1, Math.min(9, t.plCount || s.hoCount || s.maxPL || 4));
+/** 席の名前:HOがあれば「HO1「万屋」」、なければ「PC1」 */
+function seat(s, i, long = true) {
+  if (s.hoCount && i < s.hoCount) return `HO${i + 1}${long && s.hoNames[i] ? `「${s.hoNames[i]}」` : ''}`;
+  return `PC${i + 1}`;
+}
+/** この卓で使う項目か(卓にいないHOあての秘匿は出さない) */
+const inPlay = (it, t, s) => it.type !== 'secret' || !it.hos.length || it.hos.some((n) => n <= plCount(t, s));
 
 let toastT;
 function toast(msg) {
@@ -51,7 +69,7 @@ function homeView() {
   const list = DB.scenarios.map((s) => {
     const ts = DB.tables.filter((t) => t.scenarioId === s.id).sort((a, b) => (a.date < b.date ? 1 : -1));
     return `<div class="card scn">
-      <div class="scn-head"><b>${esc(s.title)}</b><span class="muted small">HO${s.hoCount}人・シーン${s.scenes.length}・情報${allItems(s).length}</span></div>
+      <div class="scn-head"><b>${esc(s.title)}</b><span class="muted small">${plRange(norm(s))}${s.hoCount ? `・HO${s.hoCount}` : '・HOなし'}・シーン${s.scenes.length}・情報${allItems(s).length}</span></div>
       <div class="tables">${ts.map((t) => `<button class="tbl-link" data-act="open-table" data-id="${t.id}"><span>${esc(t.name || '名前なしの卓')}</span><span>${esc(t.date)}${t.endName ? `・${esc(t.endName)}` : t.end ? '・終了' : t.start ? '・進行中' : ''}</span></button>`).join('') || '<span class="muted small">まだ卓がありません</span>'}</div>
       <div class="row">
         <button class="btn primary" data-act="new-table" data-id="${s.id}">＋ 新しい卓</button>
@@ -91,7 +109,7 @@ function importView() {
         ${[['scene', 'シーン'], ['info', '情報'], ['secret', '秘匿']].map(([k, l]) => `<button type="button" class="t-${k} ${it.type === k ? 'on' : ''}" data-act="ctype" data-i="${i}" data-v="${k}" role="radio" aria-checked="${it.type === k}">${l}</button>`).join('')}
       </span>
       <div><input type="text" id="ct${i}" class="ct" data-ci="${i}" value="${esc(it.text)}" aria-label="内容">
-        ${it.type === 'secret' ? `<div class="hos">${Array.from({ length: d.hoCount }, (_, k) => k + 1).map((n) => `<button type="button" class="ho ${it.hos.includes(n) ? 'on' : ''}" data-act="cho" data-i="${i}" data-n="${n}" aria-pressed="${it.hos.includes(n)}">HO${n}</button>`).join('')}</div>` : ''}
+        ${it.type === 'secret' ? `<div class="hos">${Array.from({ length: Math.max(Number(d.hoCount) || 0, Number(d.maxPL) || 0, 1) }, (_, k) => k + 1).map((n) => `<button type="button" class="ho ${it.hos.includes(n) ? 'on' : ''}" data-act="cho" data-i="${i}" data-n="${n}" aria-pressed="${it.hos.includes(n)}">HO${n}</button>`).join('')}</div>` : ''}
       </div>
       <button type="button" class="x" data-act="cdel" data-i="${i}" aria-label="この行を消す">×</button>
     </div>`).join('');
@@ -101,9 +119,13 @@ function importView() {
       ${booth.map((b, i) => `<button class="chip" data-act="from-booth" data-i="${i}">${esc(b.title)}</button>`).join(' ')}</p>` : ''}
     <label class="f" for="d-title">タイトル</label><input type="text" id="d-title" data-d="title" value="${esc(d.title)}">
     <div class="row" style="align-items:flex-end">
-      <div style="width:7em"><label class="f" for="d-ho">HOの数</label><input type="text" id="d-ho" data-d="hoCount" inputmode="numeric" value="${d.hoCount}"></div>
+      <div style="width:11em"><label class="f" for="d-min">PLの人数</label>
+        <div class="row" style="flex-wrap:nowrap;gap:4px"><input type="text" id="d-min" data-d="minPL" inputmode="numeric" value="${d.minPL}" aria-label="いちばん少ない人数" style="width:3.4em">〜<input type="text" id="d-max" data-d="maxPL" inputmode="numeric" value="${d.maxPL}" aria-label="いちばん多い人数" style="width:3.4em">人</div></div>
+      <div style="width:7em"><label class="f" for="d-ho">HOの数</label><input type="text" id="d-ho" data-d="hoCount" inputmode="numeric" value="${d.hoCount}" aria-describedby="ho-hint"></div>
       <div style="flex:1;min-width:12em"><label class="f" for="d-ends">END(1行に1つ)</label><textarea id="d-ends" data-d="ends" style="min-height:64px">${esc(d.ends)}</textarea></div>
     </div>
+    <p class="small muted" id="ho-hint" style="margin:4px 0 0">人数とHOは本文の「人数」「公開HO」「秘匿HO」から自動で入ります。HOがないシナリオは 0 にすると、卓では PC1・PC2… と表示します。</p>
+    ${Number(d.hoCount) > 0 ? `<label class="f">HOの名前(なくてもOK)</label><div class="row">${Array.from({ length: Math.min(9, Number(d.hoCount) || 0) }, (_, i) => `<label class="small" style="display:flex;gap:4px;align-items:center">HO${i + 1}<input type="text" id="d-hn${i}" data-hn="${i}" value="${esc(d.hoNames[i] || '')}" style="width:8em"></label>`).join('')}</div>` : ''}
     <label class="f" for="d-text">シナリオ本文</label>
     <div class="card small" style="margin-bottom:8px">
       <b>いちばん正確なのは、Googleドキュメントのファイルを読みこむ方法です。</b><br>
@@ -138,31 +160,33 @@ function boardView() {
   const elapsed = t.start ? (t.end ? new Date(t.end) : now) - new Date(t.start) : null;
   const openSet = new Set(t.open || []);
   const scenes = s.scenes.map((sc) => {
-    let items = sc.items;
+    let items = sc.items.filter((it) => inPlay(it, t, s));
     if (filter === 'todo') items = items.filter((it) => !t.checked[it.id]);
     if (filter === 'secret') items = items.filter((it) => it.type === 'secret' && !t.checked[it.id]);
     if (filter !== 'all' && !items.length) return '';
-    const done = sceneDone(sc, t);
+    const scItems = sc.items.filter((it) => inPlay(it, t, s));
+    const done = scItems.filter((it) => t.checked[it.id]).length;
     const open = filter !== 'all' || openSet.has(sc.id);
     return `<section class="scene ${open ? 'open' : ''}">
       <button class="scene-h" data-act="toggle-scene" data-id="${sc.id}" aria-expanded="${open}">
         <span class="arrow">▶</span><span class="t">${esc(sc.title)}</span>
         ${t.curScene === sc.id ? '<span class="cur">いまここ</span>' : ''}
-        ${sc.items.length ? `<span class="n ${done === sc.items.length ? 'all' : ''}">${done}/${sc.items.length}</span>` : ''}
+        ${scItems.length ? `<span class="n ${done === scItems.length ? 'all' : ''}">${done}/${scItems.length}</span>` : ''}
       </button>
       ${open ? `<div class="items">${items.length ? items.map((it) => {
         const at = t.checked[it.id];
         return `<button class="item ${it.type} ${at ? 'done' : ''}" data-act="check" data-id="${it.id}" data-scene="${sc.id}" aria-pressed="${!!at}">
           <span class="box">${at ? '✓' : ''}</span><span class="it">${esc(it.text)}</span>
-          <span>${it.type === 'secret' ? `<span class="tag secret">${it.hos.length ? it.hos.map((n) => `HO${n}`).join('・') : '秘匿'}</span>` : ''}${at ? ` <span class="when">${hm(at)}</span>` : ''}</span>
+          <span>${it.type === 'secret' ? `<span class="tag secret">${it.hos.length ? it.hos.map((n) => seat(s, n - 1, false)).join('・') : '秘匿'}</span>` : ''}${at ? ` <span class="when">${hm(at)}</span>` : ''}</span>
         </button>`;
       }).join('') : '<p class="empty">このシーンには、チェックする項目がありません。</p>'}</div>` : ''}
     </section>`;
   }).join('');
-  const total = allItems(s).length;
-  const doneAll = allItems(s).filter((it) => t.checked[it.id]).length;
-  const secretLeft = allItems(s).filter((it) => it.type === 'secret' && !t.checked[it.id]).length;
-  const pls = Array.from({ length: s.hoCount }, (_, i) => t.pls[i] || { pl: '', pc: '' });
+  const play = allItems(s).filter((it) => inPlay(it, t, s));
+  const total = play.length;
+  const doneAll = play.filter((it) => t.checked[it.id]).length;
+  const secretLeft = play.filter((it) => it.type === 'secret' && !t.checked[it.id]).length;
+  const pls = Array.from({ length: plCount(t, s) }, (_, i) => t.pls[i] || { pl: '', pc: '' });
   const curTitle = (s.scenes.find((x) => x.id === t.curScene) || {}).title;
   return `<div class="bar"><button class="back" data-act="home" aria-label="もどる">←</button><h1>${esc(t.name || '名前なしの卓')}<small>${esc(s.title)}</small></h1></div>
     <div class="board">
@@ -172,7 +196,7 @@ function boardView() {
           ${!t.start ? '<button class="btn primary" data-act="start">セッション開始</button>' : !t.end ? '<button class="btn" data-act="finish">セッション終了</button>' : '<button class="btn ghost small" data-act="reopen">終了を取り消す</button>'}
         </div>
         <div class="chips" role="radiogroup" aria-label="表示">
-          ${[['all', `すべて(${doneAll}/${total})`], ['todo', 'まだのもの'], ['secret', `渡していない秘匿(${secretLeft})`]].map(([k, l]) => `<button class="chip ${filter === k ? 'on' : ''}" data-act="filter" data-v="${k}" role="radio" aria-checked="${filter === k}">${l}</button>`).join('')}
+          ${[['all', `すべて(${doneAll}/${total})`], ['todo', 'まだのもの'], ...(play.some((it) => it.type === 'secret') ? [['secret', `渡していない秘匿(${secretLeft})`]] : [])].map(([k, l]) => `<button class="chip ${filter === k ? 'on' : ''}" data-act="filter" data-v="${k}" role="radio" aria-checked="${filter === k}">${l}</button>`).join('')}
         </div>
         ${scenes || '<p class="muted">表示するものはありません。</p>'}
       </div>
@@ -181,9 +205,11 @@ function boardView() {
           <h2 style="margin-top:0">卓の情報</h2>
           <div class="row"><div style="flex:1;min-width:9em"><label class="f" for="t-name">卓の名前</label><input type="text" id="t-name" data-t="name" value="${esc(t.name)}" placeholder="テストプレイ1卓目"></div>
           <div style="width:10.5em"><label class="f" for="t-date">日付</label><input type="date" id="t-date" data-t="date" value="${esc(t.date)}"></div></div>
+          ${s.minPL !== s.maxPL ? `<label class="f">この卓のPLの人数(${plRange(s)})</label>
+            <div class="seg" role="radiogroup" aria-label="この卓のPLの人数">${Array.from({ length: s.maxPL - s.minPL + 1 }, (_, k) => s.minPL + k).map((n) => `<button class="${plCount(t, s) === n ? 'on' : ''}" data-act="plcount" data-v="${n}" role="radio" aria-checked="${plCount(t, s) === n}">${n}人</button>`).join('')}</div>` : ''}
           <label class="f">PLとPC</label>
           <div class="pls"><span></span><span class="h">PL</span><span class="h">PC</span>
-            ${pls.map((p, i) => `<b class="small">HO${i + 1}</b><input type="text" id="pl${i}" data-pl="${i}" data-f="pl" value="${esc(p.pl)}" aria-label="HO${i + 1}のPL"><input type="text" id="pc${i}" data-pl="${i}" data-f="pc" value="${esc(p.pc)}" aria-label="HO${i + 1}のPC">`).join('')}</div>
+            ${pls.map((p, i) => `<b class="small">${esc(seat(s, i))}</b><input type="text" id="pl${i}" data-pl="${i}" data-f="pl" value="${esc(p.pl)}" aria-label="HO${i + 1}のPL"><input type="text" id="pc${i}" data-pl="${i}" data-f="pc" value="${esc(p.pc)}" aria-label="HO${i + 1}のPC">`).join('')}</div>
         </div>
         <div class="card">
           <h2 style="margin-top:0">メモ・気づき <span class="muted small">${t.notes.length}件</span></h2>
@@ -193,7 +219,7 @@ function boardView() {
           <h2 style="margin-top:0">END</h2>
           ${s.ends.length ? `<div class="seg" role="radiogroup" aria-label="到達したEND">${s.ends.map((e) => `<button class="${t.endName === e ? 'on' : ''}" data-act="end" data-v="${esc(e)}" role="radio" aria-checked="${t.endName === e}">${esc(e)}</button>`).join('')}</div>` : '<p class="muted small" style="margin:0">ENDは「シナリオを編集」で登録できます。</p>'}
           <label class="f">PCごとの結果</label>
-          <div class="res">${pls.map((p, i) => `<b class="small">HO${i + 1}</b><span class="small">${esc(p.pc || p.pl || '')}</span><span class="seg">${RESULTS.map((r) => `<button class="${(t.results[i] || '') === r ? 'on' : ''} ${r === 'ロスト' ? 'lost' : ''}" data-act="result" data-i="${i}" data-v="${r}" aria-pressed="${(t.results[i] || '') === r}">${r}</button>`).join('')}</span>`).join('')}</div>
+          <div class="res">${pls.map((p, i) => `<b class="small">${esc(seat(s, i, false))}</b><span class="small">${esc(p.pc || p.pl || '')}</span><span class="seg">${RESULTS.map((r) => `<button class="${(t.results[i] || '') === r ? 'on' : ''} ${r === 'ロスト' ? 'lost' : ''}" data-act="result" data-i="${i}" data-v="${r}" aria-pressed="${(t.results[i] || '') === r}">${r}</button>`).join('')}</span>`).join('')}</div>
         </div>
         <div class="row">${V.confirmDel ? `<span class="confirm"><span class="small">この卓の記録を消しますか?</span><button class="btn danger" data-act="del-table">消す</button><button class="btn ghost" data-act="del-cancel">やめる</button></span>` : '<button class="btn ghost danger" data-act="del-ask">この卓を消す</button>'}</div>
       </div>
@@ -209,23 +235,27 @@ function compareView() {
   const s = scn(V.id);
   const ts = DB.tables.filter((t) => t.scenarioId === s.id).sort((a, b) => (a.date < b.date ? -1 : 1));
   const items = allItems(s);
+  const played = (it) => ts.filter((t) => inPlay(it, t, s));
   const sceneReach = (t, sc) => {
     const times = sc.items.map((it) => t.checked[it.id]).filter(Boolean).sort();
     if (!times.length || !t.start) return '—';
     return dur(new Date(times[0]) - new Date(t.start)).replace('時間', ':').replace('分', '');
   };
   const rows = ts.map((t) => {
-    const done = items.filter((it) => t.checked[it.id]).length;
+    const mine = items.filter((it) => inPlay(it, t, s));
+    const done = mine.filter((it) => t.checked[it.id]).length;
     const ms = t.start && t.end ? new Date(t.end) - new Date(t.start) : null;
     return `<tr><td><button class="btn ghost small" data-act="open-table" data-id="${t.id}">${esc(t.name || '名前なし')}</button></td><td>${esc(t.date)}</td><td>${dur(ms)}</td><td>${esc(t.endName || '—')}</td>
-      <td>${Array.from({ length: s.hoCount }, (_, i) => `HO${i + 1}:${esc(t.results[i] || '—')}`).join('<br>')}</td>
-      <td>${items.length ? Math.round((done / items.length) * 100) : 0}%</td><td>${t.notes.length}</td></tr>`;
+      <td>${plCount(t, s)}人</td>
+      <td>${Array.from({ length: plCount(t, s) }, (_, i) => `${esc(seat(s, i, false))}:${esc(t.results[i] || '—')}`).join('<br>')}</td>
+      <td>${mine.length ? Math.round((done / mine.length) * 100) : 0}%</td><td>${t.notes.length}</td></tr>`;
   }).join('');
-  const missed = items.filter((it) => it.type === 'info' || it.type === 'secret').map((it) => ({ it, n: ts.filter((t) => t.checked[it.id]).length }))
+  const missed = items.filter((it) => it.type === 'info' || it.type === 'secret').map((it) => ({ it, n: played(it).filter((t) => t.checked[it.id]).length, of: played(it).length }))
+    .filter((x) => x.of > 0)
     .sort((a, b) => a.n - b.n);
-  const missRows = missed.slice(0, 30).map(({ it, n }) => {
-    const r = ts.length ? n / ts.length : 0;
-    return `<tr><td><span class="meter ${r < 0.5 ? 'low' : ''}"><i style="width:${Math.round(r * 100)}%"></i></span>${n}/${ts.length}卓</td><td class="wrap">${esc(it.text)}${it.type === 'secret' ? ` <span class="tag secret">${it.hos.length ? it.hos.map((x) => `HO${x}`).join('・') : '秘匿'}</span>` : ''}</td><td class="wrap muted">${esc(it.sceneTitle)}</td></tr>`;
+  const missRows = missed.slice(0, 30).map(({ it, n, of }) => {
+    const r = of ? n / of : 0;
+    return `<tr><td><span class="meter ${r < 0.5 ? 'low' : ''}"><i style="width:${Math.round(r * 100)}%"></i></span>${n}/${of}卓</td><td class="wrap">${esc(it.text)}${it.type === 'secret' ? ` <span class="tag secret">${it.hos.length ? it.hos.map((x) => seat(s, x - 1, false)).join('・') : '秘匿'}</span>` : ''}</td><td class="wrap muted">${esc(it.sceneTitle)}</td></tr>`;
   }).join('');
   const reach = s.scenes.filter((sc) => sc.items.length).map((sc) => `<tr><td class="wrap">${esc(sc.title)}</td>${ts.map((t) => `<td>${sceneReach(t, sc)}</td>`).join('')}</tr>`).join('');
   const notesByScene = s.scenes.map((sc) => {
@@ -234,7 +264,7 @@ function compareView() {
   }).join('');
   const other = ts.flatMap((t) => t.notes.filter((n) => !n.sceneId || !s.scenes.some((sc) => sc.id === n.sceneId)).map((n) => ({ ...n, tname: t.name || '名前なし' })));
   return `<div class="bar"><button class="back" data-act="home" aria-label="もどる">←</button><h1>卓をくらべる<small>${esc(s.title)}</small></h1></div>
-    <div class="card tbl-wrap"><table><thead><tr><th>卓</th><th>日付</th><th>所要時間</th><th>END</th><th>PCの結果</th><th>チェック済み</th><th>メモ</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="card tbl-wrap"><table><thead><tr><th>卓</th><th>日付</th><th>所要時間</th><th>END</th><th>人数</th><th>PCの結果</th><th>チェック済み</th><th>メモ</th></tr></thead><tbody>${rows}</tbody></table></div>
     <h2>見落とされやすい情報</h2>
     <p class="small muted">チェックがついた卓の数が少ない順です。出し方や置き場所を見直す手がかりにしてください。</p>
     <div class="card tbl-wrap"><table><thead><tr><th>出せた卓</th><th>情報</th><th>シーン</th></tr></thead><tbody>${missRows || '<tr><td colspan="3" class="muted">情報がありません</td></tr>'}</tbody></table></div>
@@ -248,8 +278,8 @@ function compareView() {
 
 /* ---------- 操作 ---------- */
 function newDraft(s) {
-  if (s) return { id: s.id, title: s.title, hoCount: s.hoCount, ends: s.ends.join('\n'), text: '', items: fromScenes(s.scenes) };
-  return { id: null, title: '', hoCount: 4, ends: '', text: '', items: [] };
+  if (s) { norm(s); return { id: s.id, title: s.title, hoCount: s.hoCount, hoNames: [...s.hoNames], minPL: s.minPL, maxPL: s.maxPL, ends: s.ends.join('\n'), text: '', items: fromScenes(s.scenes) }; }
+  return { id: null, title: '', hoCount: 0, hoNames: [], minPL: 1, maxPL: 4, ends: '', text: '', items: [] };
 }
 
 const SAMPLE_TEXT = `# 見本シナリオ
@@ -299,13 +329,15 @@ document.addEventListener('click', (e) => {
   switch (act) {
     case 'home': go('home'); break;
     case 'new-scn': go('import', { draft: newDraft() }); break;
-    case 'sample': go('import', { draft: { ...newDraft(), hoCount: 2, text: SAMPLE_TEXT } }); runParse(); break;
+    case 'sample': go('import', { draft: { ...newDraft(), text: SAMPLE_TEXT } }); runParse(); break;
     case 'edit-scn': go('import', { draft: newDraft(scn(b.dataset.id)) }); break;
     case 'from-booth': {
       const d = boothScenarios()[Number(b.dataset.i)];
       V.draft.title = d.title;
-      const n = (d.hos || []).filter((h) => h[0]).length;
-      if (n) V.draft.hoCount = n;
+      const hos = (d.hos || []).filter((h) => h[0]);
+      if (hos.length) { V.draft.hoCount = hos.length; V.draft.hoNames = hos.map((h) => h[0]); V.draft.minPL = V.draft.maxPL = hos.length; }
+      const pm = String(d.players || '').replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).match(/([0-9]+)\s*人?\s*[~〜～-]\s*([0-9]+)|([0-9]+)/);
+      if (pm) { V.draft.minPL = Number(pm[1] || pm[3]); V.draft.maxPL = Number(pm[2] || pm[3]); }
       render();
       break;
     }
@@ -317,7 +349,11 @@ document.addEventListener('click', (e) => {
     case 'save-scn': {
       const d = V.draft;
       const items = d.items.filter((x) => x.text.trim());
-      const rec = { id: d.id || uid('S'), title: d.title.trim(), hoCount: Math.max(1, Math.min(9, Number(d.hoCount) || 1)), ends: d.ends.split('\n').map((x) => x.trim()).filter(Boolean), scenes: toScenes(items) };
+      const hoCount = Math.max(0, Math.min(9, Number(d.hoCount) || 0));
+      let minPL = Math.max(1, Math.min(9, Number(d.minPL) || 1));
+      let maxPL = Math.max(1, Math.min(9, Number(d.maxPL) || minPL));
+      if (maxPL < minPL) [minPL, maxPL] = [maxPL, minPL];
+      const rec = { id: d.id || uid('S'), title: d.title.trim(), hoCount, hoNames: Array.from({ length: hoCount }, (_, i) => (d.hoNames[i] || '').trim()), minPL, maxPL, ends: d.ends.split('\n').map((x) => x.trim()).filter(Boolean), scenes: toScenes(items) };
       if (d.id) DB.scenarios = DB.scenarios.map((x) => (x.id === d.id ? rec : x)); else DB.scenarios.push(rec);
       save(); toast('保存しました'); go('home');
       break;
@@ -328,7 +364,7 @@ document.addEventListener('click', (e) => {
     case 'new-table': {
       const s = scn(b.dataset.id);
       const n = DB.tables.filter((x) => x.scenarioId === s.id).length + 1;
-      const rec = { id: uid('T'), scenarioId: s.id, name: `${n}卓目`, date: todayStr(), pls: [], start: null, end: null, checked: {}, notes: [], endName: '', results: [], open: s.scenes.length ? [s.scenes[0].id] : [], curScene: s.scenes.length ? s.scenes[0].id : null };
+      const rec = { id: uid('T'), scenarioId: s.id, name: `${n}卓目`, date: todayStr(), plCount: s.hoCount && s.hoCount >= s.minPL && s.hoCount <= s.maxPL ? s.hoCount : s.maxPL, pls: [], start: null, end: null, checked: {}, notes: [], endName: '', results: [], open: s.scenes.length ? [s.scenes[0].id] : [], curScene: s.scenes.length ? s.scenes[0].id : null };
       DB.tables.push(rec); save(); go('board', { id: rec.id });
       break;
     }
@@ -351,6 +387,7 @@ document.addEventListener('click', (e) => {
     case 'finish': t.end = new Date().toISOString(); save(); render(); toast('終了の時刻を記録しました'); break;
     case 'reopen': t.end = null; save(); render(); break;
     case 'end': t.endName = t.endName === b.dataset.v ? '' : b.dataset.v; save(); render(); break;
+    case 'plcount': t.plCount = Number(b.dataset.v); save(); render(); break;
     case 'result': { const i = Number(b.dataset.i); t.results[i] = t.results[i] === b.dataset.v ? '' : b.dataset.v; save(); render(); break; }
     case 'note-del': t.notes.splice(Number(b.dataset.i), 1); save(); render(); break;
     case 'del-table': { const sid = t.scenarioId; DB.tables = DB.tables.filter((x) => x.id !== t.id); save(); toast('消しました'); go('home'); break; }
@@ -390,6 +427,7 @@ document.addEventListener('input', (e) => {
     return;
   }
   if (el.dataset.ci && V.draft) { V.draft.items[Number(el.dataset.ci)].text = el.value; return; }
+  if (el.dataset.hn && V.draft) { V.draft.hoNames[Number(el.dataset.hn)] = el.value; return; }
   const t = V.view === 'board' ? tbl(V.id) : null;
   if (!t) return;
   if (el.dataset.t) { t[el.dataset.t] = el.value; save(); }
@@ -397,8 +435,9 @@ document.addEventListener('input', (e) => {
 });
 function runParse() {
   const d = V.draft;
-  const { items, ends } = parseScenario(d.text);
+  const { items, ends, meta } = parseScenario(d.text);
   d.items = items;
+  if (!d.id) { d.minPL = meta.minPL; d.maxPL = meta.maxPL; d.hoCount = meta.hoCount; d.hoNames = meta.hoNames; }
   if (!d.ends.trim() && ends.length) d.ends = ends.join('\n');
   if (!d.title.trim()) {
     const m = d.text.match(/^#\s+(.+)$/m);
@@ -425,7 +464,7 @@ document.addEventListener('change', (e) => {
     }).catch((err) => { V.loading = ''; render(); toast(err && err.message ? err.message : 'ファイルを読めませんでした'); });
     return;
   }
-  if (e.target.dataset.d === 'hoCount' && V.draft) render();
+  if (['hoCount', 'minPL', 'maxPL'].includes(e.target.dataset.d) && V.draft) render();
   if (e.target.id === 'import-file' && e.target.files[0]) {
     const f = e.target.files[0];
     f.text().then((txt) => {
