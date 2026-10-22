@@ -1,5 +1,7 @@
 {
+  "id": "/8tail8-tools/?app=1",
   "name": "8tail8 tools",
+  "lang": "ja",
   "short_name": "8tail8 tools",
   "start_url": "./",
   "scope": "./",
