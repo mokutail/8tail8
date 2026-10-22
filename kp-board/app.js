@@ -1,4 +1,4 @@
-import { parseScenario, toScenes, fromScenes, htmlToText } from './parse.js';
+import { parseScenario, toScenes, fromScenes, htmlToText, pdfToText } from './parse.js';
 
 const KEY = 'kp-board-v1';
 const $app = document.getElementById('app');
@@ -103,8 +103,15 @@ function importView() {
       <div style="width:7em"><label class="f" for="d-ho">HOの数</label><input type="text" id="d-ho" data-d="hoCount" inputmode="numeric" value="${d.hoCount}"></div>
       <div style="flex:1;min-width:12em"><label class="f" for="d-ends">END(1行に1つ)</label><textarea id="d-ends" data-d="ends" style="min-height:64px">${esc(d.ends)}</textarea></div>
     </div>
-    <label class="f" for="d-text">シナリオ本文(貼りつけ)</label>
-    <p class="small muted" style="margin:0 0 4px">Googleドキュメントからコピーして貼ると、見出しもシーンとして拾います。本文はこのブラウザの外には送りません。</p>
+    <label class="f" for="d-text">シナリオ本文</label>
+    <div class="card small" style="margin-bottom:8px">
+      <b>いちばん正確なのは、Googleドキュメントのファイルを読みこむ方法です。</b><br>
+      Googleドキュメントで[ファイル]→[ダウンロード]→[Markdown(.md)]を選んで保存し、下のボタンで読みこんでください。
+      PDFや、本文のコピー&貼りつけでも読めます(PDFは見出しがわからないので、少し精度が下がります)。本文はこのブラウザの外には送りません。
+      <div class="row" style="margin-top:8px"><label class="btn primary" for="src-file">ファイルを読みこむ(.md / .pdf / .txt)</label>
+      <input type="file" id="src-file" accept=".md,.markdown,.txt,.pdf,text/markdown,text/plain,application/pdf" hidden>
+      ${V.loading ? `<span class="small muted">${esc(V.loading)}</span>` : ''}</div>
+    </div>
     <textarea id="d-text" data-d="text" placeholder="ここにシナリオ本文を貼りつけ">${esc(d.text)}</textarea>
     <div class="row" style="margin-top:8px"><button class="btn primary" data-act="parse" ${d.text.trim() ? '' : 'disabled'}>本文から拾う</button>
       ${d.items.length ? '<span class="small muted">拾いなおすと、下の一覧は作りなおしになります</span>' : ''}</div>
@@ -244,21 +251,44 @@ function newDraft(s) {
   return { id: null, title: '', hoCount: 4, ends: '', text: '', items: [] };
 }
 
-const SAMPLE_TEXT = `■導入
-探索者たちは雪国の町に到着する。
-HO1に:あなたは万屋として、町長から依頼を受けている。
-HO2のみ:あなたは宿の地下に何があるかを知っている。
-【図書館】
-・古い新聞〈図書館〉
-・郷土史の本【図書館】
-★日記【目星】
-聞き耳に成功すると、上の階から足音が聞こえる。
-第2章 雪原の小屋
-小屋の扉は凍りついている。〔機械修理〕で開けられる。
-・暖炉の灰
-HO3・HO4に秘匿HOの続きを渡す
-◆クライマックス
-・魔術師の言葉【心理学】`;
+const SAMPLE_TEXT = `# 見本シナリオ
+
+## ▼ 概要 ▼
+人　　数:2人
+
+## 秘匿HO
+| HO1:貴方は探偵だ。 |
+| HO2:貴方は記者だ。 |
+
+## 【導入】
+雪国の町に到着する。
+| 強制【アイデア】 最近、この町で人が消えているという。 |
+| :---- |
+
+## 【図書館】
+| 【図書館】 成功時 古い新聞に、50年前の失踪事件の記事がある。 |
+| :---- |
+| 【HO1秘匿情報】 記事の写真に、あなたの祖父が写っている。 |
+| :---- |
+
+### 【閲覧室】
+
+### 【書庫】
+| 【目星】 成功時 床に、引きずったような跡がある。 |
+| :---- |
+
+## 【雪原の小屋】
+| 〈古い日記〉 3日目。風の音が、名前を呼ぶ。 |
+| :---- |
+| 【HO2秘匿情報】 小屋の主は、あなたの取材相手だった。 |
+| :---- |
+
+## 【エンディング】
+### END-A:雪どけ
+### END-B:凍てつく町
+
+## 【あとがき】
+ありがとうございました。`;
 
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-act]');
@@ -268,7 +298,7 @@ document.addEventListener('click', (e) => {
   switch (act) {
     case 'home': go('home'); break;
     case 'new-scn': go('import', { draft: newDraft() }); break;
-    case 'sample': go('import', { draft: { ...newDraft(), title: '見本シナリオ', ends: 'END1 雪どけ\nEND2 凍てつく町', text: SAMPLE_TEXT } }); break;
+    case 'sample': go('import', { draft: { ...newDraft(), hoCount: 2, text: SAMPLE_TEXT } }); runParse(); break;
     case 'edit-scn': go('import', { draft: newDraft(scn(b.dataset.id)) }); break;
     case 'from-booth': {
       const d = boothScenarios()[Number(b.dataset.i)];
@@ -278,7 +308,7 @@ document.addEventListener('click', (e) => {
       render();
       break;
     }
-    case 'parse': V.draft.items = parseScenario(V.draft.text); render(); if (!V.draft.items.length) toast('拾えるものがありませんでした。下のボタンから手で追加できます'); break;
+    case 'parse': runParse(); break;
     case 'ctype': { const it = V.draft.items[Number(b.dataset.i)]; it.type = b.dataset.v; if (it.type !== 'secret') it.hos = []; render(); break; }
     case 'cho': { const it = V.draft.items[Number(b.dataset.i)]; const n = Number(b.dataset.n); it.hos = it.hos.includes(n) ? it.hos.filter((x) => x !== n) : [...it.hos, n].sort(); render(); break; }
     case 'cdel': V.draft.items.splice(Number(b.dataset.i), 1); render(); break;
@@ -364,7 +394,36 @@ document.addEventListener('input', (e) => {
   if (el.dataset.t) { t[el.dataset.t] = el.value; save(); }
   if (el.dataset.pl) { const i = Number(el.dataset.pl); t.pls[i] = { ...(t.pls[i] || { pl: '', pc: '' }), [el.dataset.f]: el.value }; save(); }
 });
+function runParse() {
+  const d = V.draft;
+  const { items, ends } = parseScenario(d.text);
+  d.items = items;
+  if (!d.ends.trim() && ends.length) d.ends = ends.join('\n');
+  if (!d.title.trim()) {
+    const m = d.text.match(/^#\s+(.+)$/m);
+    if (m && !/^タブ/.test(m[1].trim())) d.title = m[1].trim();
+  }
+  render();
+  if (!items.length) toast('拾えるものがありませんでした。下のボタンから手で追加できます');
+  else toast(`${items.filter((x) => x.type !== 'scene').length}件の情報・秘匿を拾いました。確認してください`);
+}
+
 document.addEventListener('change', (e) => {
+  if (e.target.id === 'src-file' && e.target.files[0] && V.draft) {
+    const f = e.target.files[0];
+    e.target.value = '';
+    const isPdf = /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
+    V.loading = isPdf ? 'PDFを読んでいます…' : '読みこんでいます…';
+    render();
+    const job = isPdf ? pdfToText(f, (p, n) => { V.loading = `PDFを読んでいます(${p}/${n}ページ)`; const el = document.querySelector('.card .small.muted'); if (el) el.textContent = V.loading; }) : f.text();
+    job.then((text) => {
+      V.loading = '';
+      V.draft.text = text;
+      runParse();
+      if (!V.draft.title.trim()) { V.draft.title = f.name.replace(/\.(md|markdown|txt|pdf)$/i, ''); render(); }
+    }).catch((err) => { V.loading = ''; render(); toast(err && err.message ? err.message : 'ファイルを読めませんでした'); });
+    return;
+  }
   if (e.target.dataset.d === 'hoCount' && V.draft) render();
   if (e.target.id === 'import-file' && e.target.files[0]) {
     const f = e.target.files[0];
