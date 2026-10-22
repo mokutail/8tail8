@@ -51,12 +51,22 @@ header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-cont
 h1 { font-family: var(--display); font-weight: 400; font-size: 28px; margin: 0; letter-spacing: .04em; text-wrap: balance; }
 h1 small { display: block; font-family: var(--body); font-size: 13px; color: var(--ink-2); letter-spacing: 0; margin-top: 2px; }
 
-.saved { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 14px; }
-.saved .lbl { font-size: 12.5px; color: var(--ink-2); margin-right: 2px; }
-.pill { border: 1.5px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 12px; font-size: 13.5px; font-weight: 500; }
-.pill.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.pill.new { border-style: dashed; color: var(--accent); border-color: var(--accent); }
-.pill.del { color: var(--ink-2); }
+.home-link { display: inline-block; font-size: 13px; color: var(--ink-2); text-decoration: none; padding-top: 14px; }
+.home-link:hover { color: var(--accent); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.toolbar .now { font-size: 13px; color: var(--ink-2); margin-right: auto; min-width: 0; }
+.toolbar .now b { color: var(--ink); }
+.tbtn { border: 1.5px solid var(--line); background: var(--panel); border-radius: 10px; padding: 6px 14px; font-size: 14px; font-weight: 700; }
+.tbtn:hover { border-color: var(--accent); color: var(--accent); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 6px 14px 10px; margin-bottom: 14px; }
+.panel h2 { font-family: var(--display); font-weight: 400; font-size: 17px; margin: 8px 0 4px; display: flex; justify-content: space-between; align-items: center; }
+.saved-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.saved-row .t { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-row .d { font-size: 12px; color: var(--ink-2); font-weight: 400; margin-left: 6px; }
+.saved-row .cur { font-size: 11px; background: var(--accent-wash); color: var(--accent); border-radius: 6px; padding: 0 6px; margin-left: 6px; font-weight: 700; }
+.mini { border: 1.5px solid var(--line); background: none; border-radius: 8px; padding: 3px 10px; font-size: 13px; font-weight: 700; }
+.mini.del { color: var(--ink-2); }
+.mini.del.sure { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
 .tabs { display: none; }
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; align-items: start; }
@@ -136,11 +146,13 @@ pre#preview {
 <body>
 
 <div class="wrap">
+  <a class="home-link" href="../">← 8tail8 tools</a>
   <header class="top">
     <h1>BOOTH説明文メーカー<small>シナリオの情報を入れると、BOOTHの商品説明にそのまま貼れる文章ができます</small></h1>
   </header>
 
-  <div class="saved" id="saved"></div>
+  <div class="toolbar" id="toolbar"></div>
+  <div class="panel" id="saved-panel" hidden></div>
 
   <div class="tabs" role="tablist" aria-label="表示の切りかえ">
     <button id="tab-form" class="on" data-view="form" role="tab" aria-selected="true">入力</button>
@@ -154,7 +166,7 @@ pre#preview {
         <div class="out-head"><span class="meta" id="count"></span><button type="button" class="copy" id="copy">コピー</button></div>
         <pre id="preview"></pre>
       </div>
-      <p class="note">権利表示・シナリオについて・地雷シートの文・利用規約のURLは、「新しいシナリオ」を作っても引きつぎます。入力した内容は、このブラウザの中にだけ保存されます。</p>
+      <p class="note">入力すると自動で保存され、「保存したシナリオ」から開きなおせます。権利表示・シナリオについて・地雷シートの文・利用規約のURLは、新しく作るときも前回の内容を引きつぎます。保存先はこのブラウザの中だけです。</p>
     </aside>
   </div>
 </div>
@@ -187,7 +199,7 @@ pre#preview {
   };
 
   const blank = (keep) => ({
-    title: '', nick: '', system: keep.system || 'CoC6版', format: '', players: '', secret: false, time: '', skills: '', stage: '', lost: '', battle: '', remarks: '',
+    title: '', nick: '', system: '', format: '', players: '', secret: false, time: '', skills: '', stage: '', lost: '', battle: '', remarks: '',
     kp: 0, pl: 0,
     trends: (keep.trends || SAMPLE.trends).map(([l]) => [l, 0]),
     hos: [['', 0]], hoUrl: '', recommend: '', good: '', bad: '', contents: '',
@@ -197,11 +209,17 @@ pre#preview {
   function today() { const d = new Date(); return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`; }
 
   // 保存(このブラウザの中だけ)
-  let store = { list: [{ id: 'sample', data: SAMPLE, sample: true }], cur: 'sample' };
-  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.list && s.list.length) store = s; } catch (e) { /* 保存なしでも動く */ }
+  let store = { list: [{ id: 'sample', data: SAMPLE, updated: Date.now() }], cur: null };
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && Array.isArray(s.list)) store = s; } catch (e) { /* 保存なしでも動く */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { /* 保存できなくても動く */ } };
-  const curItem = () => store.list.find((x) => x.id === store.cur) || store.list[0];
-  let S = JSON.parse(JSON.stringify(curItem().data));
+  const curItem = () => store.list.find((x) => x.id === store.cur) || null;
+  // 共通の文(権利表示など)は、いちばん最近さわったシナリオから引きつぐ
+  const latestData = () => [...store.list].sort((a, b) => (b.updated || 0) - (a.updated || 0))[0]?.data || SAMPLE;
+  // 開いたときは、いつも新しいまっさらな状態から
+  store.cur = null;
+  let S = blank(latestData());
+  let panelOpen = false;
+  let confirmId = null;
 
   /* ---------- 完成文をつくる ---------- */
   const width = (s) => [...s].reduce((w, c) => w + (/[\x20-\x7e｡-ﾟ]/.test(c) ? 0.5 : 1), 0);
@@ -257,9 +275,8 @@ pre#preview {
   const chips = (id, opts, label) => `<div class="row"><span class="k">${label}</span><div class="chips">${opts.map((o) => `<button type="button" class="chip ${S[id] === o ? 'on' : ''}" data-chip="${id}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}<input type="text" id="f-${id}" data-k="${id}" value="${esc(opts.includes(S[id]) ? '' : S[id])}" placeholder="ほか" aria-label="${label}(自由入力)"></div></div>`;
 
   function renderForm() {
-    const cur = curItem();
     document.getElementById('form').innerHTML = `
-    <fieldset><legend><span class="mark">▼</span>シナリオ${cur.sample ? '<span class="sample">例:あなたの説明文から</span>' : ''}</legend>
+    <fieldset><legend><span class="mark">▼</span>シナリオ</legend>
       ${text('title', 'タイトル', '魔術師は泣けない')}
       ${text('nick', '呼称', 'まじゅなき')}
     </fieldset>
@@ -307,10 +324,23 @@ pre#preview {
     </fieldset>`;
   }
 
+  const fmtDate = (t) => { if (!t) return ''; const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
   function renderSaved() {
-    document.getElementById('saved').innerHTML = `<span class="lbl">シナリオ</span>${store.list.map((x) => `<button type="button" class="pill ${x.id === store.cur ? 'on' : ''}" data-open="${x.id}">${esc(x.data.title || '(無題)')}</button>`).join('')}
-      <button type="button" class="pill new" data-new>＋ 新しいシナリオ</button>
-      ${store.list.length > 1 ? `<button type="button" class="pill del" data-remove aria-label="いま開いているシナリオを消す">このシナリオを消す</button>` : ''}`;
+    const cur = curItem();
+    document.getElementById('toolbar').innerHTML = `
+      <span class="now">${cur ? `編集中:<b>${esc(cur.data.title || '(無題)')}</b>` : '新しいシナリオ'}</span>
+      <button type="button" class="tbtn" data-new>新しく作る</button>
+      <button type="button" class="tbtn" data-list aria-expanded="${panelOpen}">保存したシナリオ(${store.list.length})</button>`;
+    const p = document.getElementById('saved-panel');
+    p.hidden = !panelOpen;
+    if (!panelOpen) return;
+    const list = [...store.list].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    p.innerHTML = `<h2>保存したシナリオ<button type="button" class="mini" data-list aria-label="とじる">とじる</button></h2>
+      ${list.length ? list.map((x) => `<div class="saved-row">
+        <span class="t">${esc(x.data.title || '(無題)')}<span class="d">${fmtDate(x.updated)}</span>${x.id === store.cur ? '<span class="cur">編集中</span>' : ''}</span>
+        <button type="button" class="mini" data-open="${x.id}">開く</button>
+        <button type="button" class="mini del ${confirmId === x.id ? 'sure' : ''}" data-remove="${x.id}">${confirmId === x.id ? '本当に消す' : '消す'}</button>
+      </div>`).join('') : '<p class="note">まだありません。入力すると自動で保存されます。</p>'}`;
   }
 
   function renderOut() {
@@ -319,10 +349,19 @@ pre#preview {
     document.getElementById('count').textContent = `${[...t].length.toLocaleString()}文字`;
   }
 
+  const hasContent = () => !!(S.title.trim() || S.nick.trim() || S.recommend.trim() || S.contents.trim() || S.hos.some(([n]) => n.trim()));
   function commit() {
-    const it = curItem();
+    let it = curItem();
+    if (!it) {
+      if (!hasContent()) { renderOut(); return; }
+      it = { id: 's' + Date.now().toString(36), data: null };
+      store.list.push(it);
+      store.cur = it.id;
+    }
     it.data = JSON.parse(JSON.stringify(S));
+    it.updated = Date.now();
     save();
+    renderSaved();
     renderOut();
   }
   const full = () => { renderSaved(); renderForm(); renderOut(); };
@@ -397,18 +436,20 @@ pre#preview {
       return;
     }
     if (b.dataset.del) { S[b.dataset.del].splice(Number(b.dataset.i), 1); commit(); renderForm(); return; }
-    if (b.dataset.open) { store.cur = b.dataset.open; S = JSON.parse(JSON.stringify(curItem().data)); save(); full(); return; }
+    if (b.hasAttribute('data-list')) { panelOpen = !panelOpen; confirmId = null; renderSaved(); return; }
+    if (b.dataset.open) { store.cur = b.dataset.open; S = JSON.parse(JSON.stringify(curItem().data)); panelOpen = false; full(); window.scrollTo(0, 0); return; }
     if (b.hasAttribute('data-new')) {
-      const id = 's' + Date.now().toString(36);
-      store.list.push({ id, data: blank(S) });
-      store.cur = id; S = JSON.parse(JSON.stringify(curItem().data)); save(); full(); setTab('form');
+      S = blank(S); store.cur = null; panelOpen = false; full(); setTab('form');
       document.getElementById('f-title').focus();
       return;
     }
-    if (b.hasAttribute('data-remove')) {
-      if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'もう一度押すと消えます'; setTimeout(() => { if (b.isConnected) { b.dataset.confirm = ''; b.textContent = 'このシナリオを消す'; } }, 3000); return; }
-      store.list = store.list.filter((x) => x.id !== store.cur);
-      store.cur = store.list[0].id; S = JSON.parse(JSON.stringify(curItem().data)); save(); full(); toast('消しました');
+    if (b.dataset.remove) {
+      const id = b.dataset.remove;
+      if (confirmId !== id) { confirmId = id; renderSaved(); return; }
+      store.list = store.list.filter((x) => x.id !== id);
+      confirmId = null;
+      if (store.cur === id) { store.cur = null; S = blank(S); }
+      save(); full(); toast('消しました');
     }
   });
 
